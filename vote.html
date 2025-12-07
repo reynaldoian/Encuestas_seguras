@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Votación - Sistema de Encuestas</title>
+    
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="notification" class="notification"></div>
+    
+    <div class="container" style="max-width: 800px;">
+        <h1 class="main-title">🗳️ Encuesta de Votación</h1>
+        
+        <div id="votingContainer">
+            <div style="text-align: center; padding: 60px 30px;">
+                <div style="font-size: 64px; margin-bottom: 20px;" class="pulse">⏳</div>
+                <h2 style="color: #667eea; margin-bottom: 10px;">Cargando...</h2>
+                <p style="color: #6b7280;">Por favor espere mientras verificamos su información.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="supabaseClient.js"></script>
+    <script>
+        // ============================================
+        // SISTEMA DE NOTIFICACIONES
+        // ============================================
+        function showNotification(message, type = 'success') {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = `notification show ${type}`;
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 4000);
+        }
+
+        // ============================================
+        // OBTENER TOKEN DE LA URL
+        // ============================================
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        const email = urlParams.get('email'); // Soporte para backward compatibility
+
+        // ============================================
+        // RENDERIZAR ESTADOS
+        // ============================================
+        function renderError(titulo, mensaje, emoji = '❌') {
+            return `
+                <div class="card">
+                    <div class="status-message">
+                        <div class="status-icon">${emoji}</div>
+                        <h2 class="status-title error">${titulo}</h2>
+                        <p class="status-text">${mensaje}</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderSuccess(titulo, mensaje) {
+            return `
+                <div class="card">
+                    <div class="status-message">
+                        <div class="status-icon">✅</div>
+                        <h2 class="status-title success">${titulo}</h2>
+                        <p class="status-text">${mensaje}</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderVotingForm(participante, preguntas) {
+            return `
+                <div class="card">
+                    <div class="voter-info">
+                        <p>
+                            <strong>Votando como:</strong><br>
+                            ${participante.nombre} ${participante.apellido}<br>
+                            <span style="font-size: 14px; color: #6b7280;">${participante.correo}</span>
+                        </p>
+                    </div>
+                    
+                    <div class="questions-container">
+                        ${preguntas.map((pregunta, index) => `
+                            <div class="question-block">
+                                <h3 class="question-text">
+                                    <span class="question-number">${index + 1}</span>
+                                    ${pregunta.pregunta}
+                                </h3>
+                                <div class="options-list">
+                                    ${pregunta.opciones.map(opcion => `
+                                        <label class="voting-option">
+                                            <input 
+                                                type="radio" 
+                                                name="pregunta_${pregunta.id}" 
+                                                value="${opcion.id}"
+                                                data-pregunta-id="${pregunta.id}"
+                                                onchange="selectOption(this)"
+                                            >
+                                            ${opcion.opcion}
+                                        </label>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <button class="btn btn-success" onclick="handleSubmitVote()" style="width: 100%; padding: 16px; font-size: 17px; margin-top: 30px;">
+                        ✅ Enviar Mi Voto
+                    </button>
+                </div>
+            `;
+        }
+
+        // ============================================
+        // SELECCIONAR OPCIÓN
+        // ============================================
+        function selectOption(radio) {
+            const parent = radio.closest('.options-list');
+            const labels = parent.querySelectorAll('.voting-option');
+            
+            labels.forEach(label => {
+                label.classList.remove('selected');
+            });
+            
+            if (radio.checked) {
+                radio.closest('.voting-option').classList.add('selected');
+            }
+        }
+
+        // ============================================
+        // ENVIAR VOTO
+        // ============================================
+        let correoActual = null;
+
+        async function handleSubmitVote() {
+            // Recolectar respuestas
+            const respuestas = [];
+            const radios = document.querySelectorAll('input[type="radio"]:checked');
+            
+            if (radios.length === 0) {
+                showNotification('Por favor responda al menos una pregunta', 'error');
+                return;
+            }
+
+            radios.forEach(radio => {
+                respuestas.push({
+                    idPregunta: parseInt(radio.dataset.preguntaId),
+                    idOpcion: parseInt(radio.value)
+                });
+            });
+
+            // Confirmar envío
+            if (!confirm('¿Está seguro de enviar su voto? Esta acción no se puede deshacer.')) {
+                return;
+            }
+
+            // Mostrar cargando
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '⏳ Enviando...';
+
+            // Registrar voto
+            const result = await registrarVoto(correoActual, respuestas);
+
+            if (result.success) {
+                document.getElementById('votingContainer').innerHTML = renderSuccess(
+                    '¡Gracias por Participar!',
+                    'Su voto ha sido registrado exitosamente. Agradecemos su tiempo y participación en esta encuesta.'
+                );
+                showNotification('✅ Voto registrado exitosamente');
+            } else {
+                btn.disabled = false;
+                btn.textContent = '✅ Enviar Mi Voto';
+                showNotification('❌ ' + result.error, 'error');
+            }
+        }
+
+        // ============================================
+        // INICIALIZACIÓN
+        // ============================================
+        async function init() {
+            const container = document.getElementById('votingContainer');
+
+            // Validar que hay un token
+            if (!token && !email) {
+                container.innerHTML = renderError(
+                    'Acceso Inválido',
+                    'Debe acceder mediante el enlace enviado a su correo electrónico.',
+                    '⚠️'
+                );
+                return;
+            }
+
+            let correoParticipante;
+
+            // Si hay token, validarlo
+            if (token) {
+                const tokenResult = await validarTokenInvitacion(token);
+                if (!tokenResult.success) {
+                    container.innerHTML = renderError(
+                        'Token Inválido o Expirado',
+                        tokenResult.error,
+                        '❌'
+                    );
+                    return;
+                }
+                correoParticipante = tokenResult.correo;
+            } else {
+                correoParticipante = email;
+            }
+
+            correoActual = correoParticipante;
+
+            // Obtener información del participante
+            const participanteResult = await obtenerParticipantePorCorreo(correoParticipante);
+            
+            if (!participanteResult.success) {
+                container.innerHTML = renderError(
+                    'Correo No Registrado',
+                    `El correo ${correoParticipante} no está registrado en el sistema.`,
+                    '❌'
+                );
+                return;
+            }
+
+            const participante = participanteResult.data;
+
+            // Verificar si ya votó
+            if (participante.ha_votado) {
+                container.innerHTML = renderSuccess(
+                    '¡Gracias por Participar!',
+                    'Su voto ya ha sido registrado exitosamente.'
+                );
+                return;
+            }
+
+            // Obtener preguntas
+            const preguntasResult = await obtenerPreguntasConOpciones();
+            
+            if (!preguntasResult.success || preguntasResult.data.length === 0) {
+                container.innerHTML = renderError(
+                    'Encuesta No Disponible',
+                    'No hay preguntas configuradas para esta encuesta.',
+                    '⚠️'
+                );
+                return;
+            }
+
+            // Renderizar formulario de votación
+            container.innerHTML = renderVotingForm(participante, preguntasResult.data);
+        }
+
+        // Inicializar cuando cargue la página
+        document.addEventListener('DOMContentLoaded', async function() {
+            // Verificar conexión
+            const conexion = await verificarConexion();
+            if (!conexion.success) {
+                document.getElementById('votingContainer').innerHTML = renderError(
+                    'Error de Conexión',
+                    'No se pudo conectar con el servidor. Por favor, intente más tarde.',
+                    '⚠️'
+                );
+                return;
+            }
+
+            // Inicializar votación
+            await init();
+        });
+    </script>
+</body>
+</html>
