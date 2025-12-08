@@ -483,9 +483,8 @@ async function validarTokenInvitacion(token) {
     return { success: false, error: error.message };
   }
 }
-
 // ============================================
-// 🔥 ENVÍO DE EMAILS (USANDO EDGE FUNCTION) - NUEVA IMPLEMENTACIÓN
+// 🔥 ENVÍO DE EMAILS (USANDO EDGE FUNCTION) - IMPLEMENTACIÓN CORREGIDA
 // ============================================
 
 async function enviarInvitaciones(correos = [], enviarATodos = false, enlaceBase = '') {
@@ -537,7 +536,10 @@ async function enviarInvitaciones(correos = [], enviarATodos = false, enlaceBase
     const edgeFunctionResponse = await supabase.functions.invoke('resend-email', {
       method: 'POST',
       body: {
-        invitaciones: invitaciones, // Enviamos el array con {email, link}
+        // 🔥 CORRECCIÓN CLAVE: La Edge Function espera la clave 'correos'
+        correos: invitaciones, 
+        // Se añade enlaceBase para que la Edge Function tenga toda la información que necesita
+        enlaceBase: enlaceBase, 
       }
     });
 
@@ -549,27 +551,31 @@ async function enviarInvitaciones(correos = [], enviarATodos = false, enlaceBase
             const errorData = JSON.parse(edgeFunctionResponse.error.message);
             throw new Error(errorData.error || `Fallo de invocación: ${edgeFunctionResponse.error.message}`);
         } catch (e) {
-             throw new Error(`Fallo de invocación: ${edgeFunctionResponse.error.message}`);
+            throw new Error(`Fallo de invocación: ${edgeFunctionResponse.error.message}`);
         }
     }
     
-    // Asumiendo que la función devuelve { success: true, count: N }
+    // El resultado de la Edge Function
     const resultadoEdge = edgeFunctionResponse.data;
     
-    // Verifica si la función se ejecutó pero devolvió un error JSON
+    // Verifica si la función se ejecutó pero devolvió un error JSON (código 400 o 500)
     if (!resultadoEdge || resultadoEdge.success === false) {
       throw new Error(resultadoEdge.error || 'Error desconocido reportado por Edge Function');
     }
 
-    console.log(`✅ Edge Function responded. ${resultadoEdge.count} emails enviados.`);
+    // Extraer datos del payload devuelto por la Edge Function
+    const totalEnviados = resultadoEdge.estadisticas?.exitosos || 0;
+    const mensajeFinal = resultadoEdge.mensaje || `${totalEnviados} emails enviados correctamente vía Edge Function.`;
+    
+    console.log(`✅ Edge Function respondió. ${totalEnviados} emails enviados.`);
     
     return { 
       success: true, 
       data: {
-        count: resultadoEdge.count,
+        count: totalEnviados,
         resultado: {
           resultados: invitaciones,
-          mensaje: `${resultadoEdge.count} emails enviados correctamente vía Edge Function.`
+          mensaje: mensajeFinal
         }
       }
     };
@@ -579,7 +585,6 @@ async function enviarInvitaciones(correos = [], enviarATodos = false, enlaceBase
     return { success: false, error: error.message };
   }
 }
-
 // ============================================
 // UTILIDADES
 // ============================================

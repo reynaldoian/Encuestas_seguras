@@ -525,4 +525,3 @@ function inicializarGraficas(resultados, tipoGrafica = 'barras') {
     }, 100);
 }
 
-console.log('✅ Módulo de gráficas cargado');

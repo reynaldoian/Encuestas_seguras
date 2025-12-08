@@ -1,285 +1,241 @@
 // ============================================
-// Edge Function: resend-email (CON ENVÍO REAL)
-// Ubicación: supabase/functions/resend-email/index.ts
+// EDGE FUNCTION: resend-email
+// Path: supabase/functions/resend-email/index.ts
 // ============================================
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || ''
 
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+interface InvitacionEmail {
+  email: string
+  link: string
+}
 
+interface RequestBody {
+  correos: InvitacionEmail[]
+  enlaceBase: string
+}
+
+// Función para enviar email usando Resend
+async function enviarEmailResend(email: string, link: string): Promise<boolean> {
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${RESEND_API_KEY}`
+      },
+      body: JSON.stringify({
+      from: 'Incorporación <invitacion@resend.dev>', // Opción con nombre 'Incorporación' y correo genérico, // ⚠️ CAMBIAR por tu dominio verificado
+        to: [email],
+        subject: '🗳️ Invitación para Participar en Encuesta',
+        html: `
+          <!DOCTYPE html>
+          <html lang="es">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Invitación a Encuesta</title>
+          </head>
+          <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f3f4f6;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
+              <tr>
+                <td align="center">
+                  <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                    
+                    <!-- Header -->
+                    <tr>
+                      <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px; text-align: center; border-radius: 15px 15px 0 0;">
+                        <h1 style="color: #ffffff; margin: 0; font-size: 32px;">🗳️</h1>
+                        <h2 style="color: #ffffff; margin: 10px 0 0 0; font-size: 24px; font-weight: bold;">Invitación a Encuesta</h2>
+                      </td>
+                    </tr>
+                    
+                    <!-- Body -->
+                    <tr>
+                      <td style="padding: 40px 30px;">
+                        <p style="color: #1f2937; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+                          ¡Hola!
+                        </p>
+                        
+                        <p style="color: #1f2937; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+                          Has sido invitado/a a participar en una encuesta importante. Tu opinión es muy valiosa para nosotros.
+                        </p>
+                        
+                        <p style="color: #1f2937; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
+                          Haz clic en el botón de abajo para acceder a la encuesta:
+                        </p>
+                        
+                        <!-- Button -->
+                        <table width="100%" cellpadding="0" cellspacing="0">
+                          <tr>
+                            <td align="center">
+                              <a href="${link}" 
+                                 style="display: inline-block; 
+                                        padding: 16px 40px; 
+                                        background: linear-gradient(135deg, #4f46e5, #7c3aed); 
+                                        color: #ffffff; 
+                                        text-decoration: none; 
+                                        font-size: 18px; 
+                                        font-weight: bold; 
+                                        border-radius: 8px;
+                                        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);">
+                                ✅ Responder Encuesta
+                              </a>
+                            </td>
+                          </tr>
+                        </table>
+                        
+                        <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 30px 0 0 0; text-align: center;">
+                          O copia este enlace en tu navegador:
+                        </p>
+                        
+                        <p style="background-color: #f9fafb; 
+                                  padding: 15px; 
+                                  border-radius: 8px; 
+                                  word-break: break-all; 
+                                  font-size: 13px; 
+                                  color: #4f46e5; 
+                                  margin: 10px 0 0 0;
+                                  text-align: center;">
+                          ${link}
+                        </p>
+                      </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                      <td style="background-color: #f9fafb; padding: 30px; text-align: center; border-radius: 0 0 15px 15px;">
+                        <p style="color: #6b7280; font-size: 14px; margin: 0 0 10px 0;">
+                          ⏰ Este enlace expira en 7 días
+                        </p>
+                        <p style="color: #9ca3af; font-size: 12px; margin: 0;">
+                          Sistema de Encuestas &copy; ${new Date().getFullYear()}
+                        </p>
+                      </td>
+                    </tr>
+                    
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </body>
+          </html>
+        `
+      })
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      console.error(`❌ Error Resend para ${email}:`, error)
+      return false
+    }
+
+    console.log(`✅ Email enviado a ${email}`)
+    return true
+
+  } catch (error) {
+    console.error(`❌ Error enviando email a ${email}:`, error)
+    return false
+  }
+}
+
+// Handler principal
 serve(async (req) => {
-  // Manejar preflight CORS
+  // CORS Headers
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  }
+
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { correos, enlaceBase } = await req.json();
+    console.log('📧 Iniciando envío de emails...')
 
-    console.log('📧 Iniciando envío de emails:', {
-      totalCorreos: correos?.length,
-      tieneApiKey: !!RESEND_API_KEY
-    });
+    // Parse request body
+    const body: RequestBody = await req.json()
+    const { correos, enlaceBase } = body
 
-    // Validar API key
-    if (!RESEND_API_KEY) {
-      throw new Error('❌ RESEND_API_KEY no está configurada en Supabase Secrets');
-    }
-
-    // Validar datos recibidos
+    // Validaciones
     if (!correos || !Array.isArray(correos) || correos.length === 0) {
-      return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: "Se requiere un array de correos con email y link" 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+      throw new Error('No se proporcionaron correos válidos')
     }
 
-    console.log('🚀 Enviando emails con Resend...');
-    const resultados = [];
-    
-    for (const invitacion of correos) {
-      try {
-        console.log(`📤 Procesando: ${invitacion.email}`);
+    if (!enlaceBase) {
+      throw new Error('No se proporcionó el enlace base')
+    }
 
-        const response = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${RESEND_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from: 'Sistema de Encuestas <onboarding@resend.dev>',
-            to: [invitacion.email],
-            subject: '🗳️ Invitación para Participar en Encuesta',
-            html: `
-              <!DOCTYPE html>
-              <html lang="es">
-              <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <style>
-                  body {
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                    line-height: 1.6;
-                    color: #333;
-                    max-width: 600px;
-                    margin: 0 auto;
-                    padding: 0;
-                    background-color: #f4f4f4;
-                  }
-                  .email-container {
-                    background-color: white;
-                    margin: 20px auto;
-                    border-radius: 12px;
-                    overflow: hidden;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-                  }
-                  .header {
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    padding: 40px 30px;
-                    text-align: center;
-                  }
-                  .header h1 {
-                    margin: 0;
-                    font-size: 28px;
-                    font-weight: 700;
-                  }
-                  .content {
-                    padding: 40px 30px;
-                  }
-                  .content p {
-                    margin: 0 0 15px 0;
-                    color: #4a5568;
-                  }
-                  .button-container {
-                    text-align: center;
-                    margin: 35px 0;
-                  }
-                  .button {
-                    display: inline-block;
-                    padding: 16px 36px;
-                    background: #4f46e5;
-                    color: white;
-                    text-decoration: none;
-                    border-radius: 8px;
-                    font-weight: 700;
-                    font-size: 16px;
-                    box-shadow: 0 4px 8px rgba(79, 70, 229, 0.3);
-                    transition: all 0.3s ease;
-                  }
-                  .button:hover {
-                    background: #4338ca;
-                    box-shadow: 0 6px 12px rgba(79, 70, 229, 0.4);
-                  }
-                  .link-box {
-                    background: #f7fafc;
-                    padding: 20px;
-                    border-radius: 8px;
-                    border-left: 4px solid #4f46e5;
-                    margin: 25px 0;
-                  }
-                  .link-box p {
-                    margin: 0 0 10px 0;
-                    font-weight: 600;
-                    color: #2d3748;
-                  }
-                  .link-box code {
-                    display: block;
-                    word-break: break-all;
-                    font-size: 12px;
-                    color: #4f46e5;
-                    background: white;
-                    padding: 12px;
-                    border-radius: 4px;
-                  }
-                  .warning {
-                    background: #fff5f5;
-                    border-left: 4px solid #ef4444;
-                    padding: 15px;
-                    margin: 25px 0;
-                    border-radius: 4px;
-                  }
-                  .warning p {
-                    margin: 0;
-                    color: #991b1b;
-                    font-size: 14px;
-                  }
-                  .footer {
-                    background: #f7fafc;
-                    padding: 25px 30px;
-                    text-align: center;
-                    color: #718096;
-                    font-size: 14px;
-                    border-top: 1px solid #e2e8f0;
-                  }
-                  .footer p {
-                    margin: 5px 0;
-                  }
-                </style>
-              </head>
-              <body>
-                <div class="email-container">
-                  <div class="header">
-                    <h1>🗳️ Invitación a Encuesta</h1>
-                  </div>
-                  
-                  <div class="content">
-                    <p>Hola,</p>
-                    <p>Has sido invitado a participar en nuestra encuesta. Tu opinión es muy importante para nosotros y nos ayudará a tomar mejores decisiones.</p>
-                    
-                    <div class="button-container">
-                      <a href="${invitacion.link}" class="button">
-                        📝 Completar Encuesta Ahora
-                      </a>
-                    </div>
-                    
-                    <div class="link-box">
-                      <p>O copia y pega este enlace en tu navegador:</p>
-                      <code>${invitacion.link}</code>
-                    </div>
-                    
-                    <div class="warning">
-                      <p>⚠️ <strong>Importante:</strong> Este enlace es personal e intransferible. No lo compartas con otras personas.</p>
-                    </div>
-                    
-                    <p style="margin-top: 30px;">Gracias por tu colaboración,<br><strong>El Equipo de Encuestas</strong></p>
-                  </div>
-                  
-                  <div class="footer">
-                    <p>Sistema de Encuestas © ${new Date().getFullYear()}</p>
-                    <p style="color: #a0aec0; font-size: 12px;">Este es un email automático, por favor no responder.</p>
-                  </div>
-                </div>
-              </body>
-              </html>
-            `,
-          }),
-        });
+    if (!RESEND_API_KEY) {
+      throw new Error('RESEND_API_KEY no configurada')
+    }
 
-        const data = await response.json();
+    console.log(`📨 Enviando ${correos.length} emails...`)
 
-        if (response.ok) {
-          console.log(`✅ Email enviado correctamente: ${invitacion.email}`);
-          resultados.push({
-            email: invitacion.email,
-            status: 'enviado',
-            link: invitacion.link,
-            emailId: data.id
-          });
-        } else {
-          console.error(`❌ Error al enviar a ${invitacion.email}:`, data);
-          resultados.push({
-            email: invitacion.email,
-            status: 'error',
-            error: data.message || 'Error desconocido de Resend',
-            link: invitacion.link
-          });
-        }
+    // Enviar emails en paralelo (máximo 10 a la vez para no saturar)
+    const resultados = []
+    const batchSize = 10
 
-      } catch (error) {
-        console.error(`❌ Error crítico para ${invitacion.email}:`, error);
-        resultados.push({
+    for (let i = 0; i < correos.length; i += batchSize) {
+      const batch = correos.slice(i, i + batchSize)
+      
+      const promises = batch.map(async (invitacion) => {
+        const exito = await enviarEmailResend(invitacion.email, invitacion.link)
+        return {
           email: invitacion.email,
-          status: 'error',
-          error: error.message,
-          link: invitacion.link
-        });
-      }
+          link: invitacion.link,
+          enviado: exito
+        }
+      })
 
-      // Pequeña pausa entre emails para evitar rate limiting
-      await new Promise(resolve => setTimeout(resolve, 100));
+      const batchResults = await Promise.all(promises)
+      resultados.push(...batchResults)
+
+      // Pequeña pausa entre batches
+      if (i + batchSize < correos.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
     }
 
-    const exitosos = resultados.filter(r => r.status === 'enviado').length;
-    const fallidos = resultados.filter(r => r.status === 'error').length;
+    const exitosos = resultados.filter(r => r.enviado).length
+    const fallidos = resultados.filter(r => !r.enviado).length
 
-    console.log(`✅ Proceso completado:`);
-    console.log(`   - Enviados: ${exitosos}`);
-    console.log(`   - Fallidos: ${fallidos}`);
-    console.log(`   - Total: ${resultados.length}`);
+    console.log(`✅ Proceso completado: ${exitosos} exitosos, ${fallidos} fallidos`)
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: true,
-        modo: 'producción',
-        enviados: exitosos,
-        fallidos: fallidos,
-        total: resultados.length,
-        mensaje: exitosos > 0 
-          ? `✅ ${exitosos} email(s) enviado(s) correctamente` 
-          : '❌ No se pudo enviar ningún email',
-        resultados: resultados
+        mensaje: `Emails enviados: ${exitosos}/${correos.length}`,
+        resultados: resultados,
+        estadisticas: {
+          total: correos.length,
+          exitosos,
+          fallidos
+        }
       }),
-      { 
+      {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
+        status: 200
       }
-    );
+    )
 
   } catch (error) {
-    console.error('❌ Error general en Edge Function:', error);
+    console.error('❌ Error en Edge Function:', error)
+
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: false,
-        error: error.message,
-        stack: error.stack
+        error: error.message || 'Error desconocido'
       }),
-      { 
+      {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500 
+        status: 400
       }
-    );
+    )
   }
-});
+})
