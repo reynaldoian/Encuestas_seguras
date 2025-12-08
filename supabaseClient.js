@@ -234,7 +234,7 @@ async function eliminarPregunta(idPregunta) {
       } else {
         console.log('✅ Votos eliminados');
       }
-    }
+    };
     
     // 3. Eliminar opciones
     const { error: errorDeleteOpciones } = await supabase
