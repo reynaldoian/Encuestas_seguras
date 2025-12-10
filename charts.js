@@ -1,7 +1,7 @@
 // ============================================
 // MÓDULO DE GRÁFICAS - VERSIÓN CORREGIDA
 // 🔥 SOLUCIÓN #2: Inicialización correcta de Chart.js
-// ============================================
+// ===========================================
 
 let chartInstances = {};
 
