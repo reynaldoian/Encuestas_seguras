@@ -159,14 +159,59 @@ async function handleEnviarATodos() {
 
     showNotification('📧 Generando enlaces...', 'warning');
     
-    const URL_BASE_ENCUESTA = `${window.location.origin}/Encuestas_lis/vote.html`;
-    const result = await enviarInvitaciones([], true, URL_BASE_ENCUESTA);
-
-    if (result.success) {
-        const resultados = result.data?.resultado?.resultados || [];
-        mostrarModalEnlacesMultiples(resultados);
-    } else {
-        showNotification('❌ Error: ' + result.error, 'error');
+    try {
+        // 1. Obtener participantes que NO han votado
+        const participantesResult = await obtenerParticipantes();
+        
+        if (!participantesResult.success) {
+            showNotification('❌ Error al obtener participantes', 'error');
+            return;
+        }
+        
+        const participantesPendientes = participantesResult.data.filter(p => !p.ha_votado);
+        
+        if (participantesPendientes.length === 0) {
+            showNotification('ℹ️ No hay participantes pendientes', 'warning');
+            return;
+        }
+        
+        console.log('📋 Participantes pendientes:', participantesPendientes.length);
+        
+        // 2. Generar tokens y enlaces para cada uno
+        const invitaciones = [];
+        
+        for (const participante of participantesPendientes) {
+            const tokenResult = await generarTokenInvitacion(participante.email);
+            
+            if (tokenResult.success) {
+                const voteUrl = `${window.location.origin}/Encuestas_lis/vote.html?token=${tokenResult.token}`;
+                invitaciones.push({
+                    email: participante.email,
+                    link: voteUrl
+                });
+            }
+        }
+        
+        console.log('🔗 Enlaces generados:', invitaciones.length);
+        
+        if (invitaciones.length === 0) {
+            showNotification('❌ No se pudieron generar enlaces', 'error');
+            return;
+        }
+        
+        // 3. Enviar emails con EmailJS
+        const result = await enviarInvitaciones(invitaciones);
+        
+        if (result.success) {
+            mostrarModalEnlacesMultiples(invitaciones);
+            showNotification(`✅ ${invitaciones.length} enlaces generados`);
+        } else {
+            showNotification('❌ Error: ' + result.error, 'error');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error en handleEnviarATodos:', error);
+        showNotification('❌ Error: ' + error.message, 'error');
     }
 }
 
@@ -222,14 +267,15 @@ async function cargarPreguntas() {
         return;
     }
 
+    // ✅ CORREGIDO: IDs UUID entre comillas simples
     container.innerHTML = preguntas.map(p => `
         <div class="position-item">
             <div class="position-header">
                 <h4 class="position-title">${p.pregunta}</h4>
-                <button class="btn-icon" onclick="handleEliminarPregunta(${p.id})" title="Eliminar">🗑️</button>
+                <button class="btn-icon" onclick="handleEliminarPregunta('${p.id}')" title="Eliminar">🗑️</button>
             </div>
             <div class="candidates-list">
-                ${p.opciones.map(o => `<span class="candidate-tag">${o.opcion}</span>`).join('')}
+                ${p.opciones.map(o => `<span class="candidate-tag" data-opcion-id="${o.id}">${o.opcion}</span>`).join('')}
             </div>
         </div>
     `).join('');
@@ -238,6 +284,8 @@ async function cargarPreguntas() {
 async function handleEliminarPregunta(id) {
     if (!confirm('¿Está seguro de eliminar esta pregunta?')) return;
 
+    console.log('🗑️ Eliminando pregunta con ID:', id); // DEBUG
+    
     const result = await eliminarPregunta(id);
     if (result.success) {
         showNotification('✅ Pregunta eliminada');
@@ -329,25 +377,27 @@ function mostrarModalEnlace(correo, url) {
 
 function mostrarModalEnlacesMultiples(resultados) {
     let enlaces = '<div style="max-height: 400px; overflow-y: auto;">';
+    
     resultados.forEach(r => {
         enlaces += `
-            <div class="link-item">
+            <div class="link-item" style="padding: 15px; border-bottom: 1px solid #e5e7eb;">
                 <strong>📧 ${r.email}</strong><br>
-                <a href="${r.link}" target="_blank" class="link-url">${r.link}</a>
-                <button onclick="navigator.clipboard.writeText('${r.link}'); showNotification('Enlace copiado')" class="btn-copy">
+                <a href="${r.link}" target="_blank" class="link-url" style="color: #4f46e5; font-size: 12px; word-break: break-all;">${r.link}</a>
+                <button onclick="navigator.clipboard.writeText('${r.link}'); showNotification('Enlace copiado')" class="btn-copy" style="margin-top: 8px; padding: 6px 12px; background: #22c55e; color: white; border: none; border-radius: 4px; cursor: pointer;">
                     📋 Copiar
                 </button>
             </div>
         `;
     });
+    
     enlaces += '</div>';
     
     const modal = `
         <div class="modal-overlay" onclick="this.remove()">
-            <div class="modal-content modal-large" onclick="event.stopPropagation()">
+            <div class="modal-content modal-large" onclick="event.stopPropagation()" style="max-width: 600px;">
                 <h3>🔗 Enlaces Generados (${resultados.length})</h3>
                 <p style="color: #6b7280; margin-bottom: 20px;">
-                    Copia estos enlaces y envíalos a los participantes
+                    Los enlaces han sido copiados. Envíalos a los participantes por tu medio preferido.
                 </p>
                 ${enlaces}
                 <button onclick="this.closest('.modal-overlay').remove();" class="btn" style="width: 100%; background: #6b7280; color: white; margin-top: 20px;">
@@ -356,8 +406,8 @@ function mostrarModalEnlacesMultiples(resultados) {
             </div>
         </div>
     `;
+    
     document.body.insertAdjacentHTML('beforeend', modal);
-    showNotification(`✅ ${resultados.length} enlaces generados`);
 }
 
 function crearModalExportar() {

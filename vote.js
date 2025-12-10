@@ -72,6 +72,7 @@ function renderVotingForm(participante, preguntas) {
                                         name="pregunta_${pregunta.id}" 
                                         value="${opcion.id}"
                                         data-pregunta-id="${pregunta.id}"
+                                        data-opcion-id="${opcion.id}"
                                         onchange="selectOption(this)"
                                     >
                                     ${opcion.opcion}
@@ -103,48 +104,71 @@ function selectOption(radio) {
     }
 }
 
+// ✅ FUNCIÓN ACTUALIZADA CON DEBUG COMPLETO
 async function handleSubmitVote() {
-    // Recolectar respuestas
+    console.log('=== INICIANDO ENVÍO DE VOTO ===');
+    console.log('📧 Correo actual:', correoActual);
+    
     const respuestas = [];
     const radios = document.querySelectorAll('input[type="radio"]:checked');
     
+    console.log('📋 Radios seleccionados:', radios.length);
+    
     if (radios.length === 0) {
-        showNotification('Por favor responda al menos una pregunta', 'error');
+        showNotification('Por favor responda todas las preguntas', 'error');
         return;
     }
 
-    radios.forEach(radio => {
+    radios.forEach((radio, index) => {
+        const preguntaId = radio.dataset.preguntaId;
+        const opcionId = radio.dataset.opcionId;
+        
+        console.log(`📋 Radio ${index + 1}:`, {
+            name: radio.name,
+            value: radio.value,
+            dataset: {
+                preguntaId: preguntaId,
+                opcionId: opcionId
+            }
+        });
+        
         respuestas.push({
-            idPregunta: parseInt(radio.dataset.preguntaId),
-            idOpcion: parseInt(radio.value)
+            idPregunta: preguntaId,
+            idOpcion: opcionId
         });
     });
 
-    // Confirmar envío
+    console.log('📋 Respuestas finales:', respuestas);
+
     if (!confirm('¿Está seguro de enviar su voto? Esta acción no se puede deshacer.')) {
         return;
     }
 
-    // Deshabilitar botón
     const btn = event.target;
-    const textoOriginal = btn.textContent;
     btn.disabled = true;
     btn.textContent = '⏳ Enviando...';
 
-    // Registrar voto
-    const result = await registrarVoto(correoActual, respuestas);
-
-    if (result.success) {
-        document.getElementById('votingContainer').innerHTML = renderSuccess(
-            '¡Gracias por Participar!',
-            'Su voto ha sido registrado exitosamente. Agradecemos su tiempo y participación en esta encuesta.'
-        );
-        showNotification('✅ Voto registrado exitosamente');
-    } else {
+    try {
+        const result = await registrarVoto(correoActual, respuestas);
+        
+        if (result.success) {
+            document.getElementById('votingContainer').innerHTML = renderSuccess(
+                '¡Gracias por Participar!',
+                'Su voto ha sido registrado exitosamente.'
+            );
+            showNotification('✅ Voto registrado exitosamente');
+        } else {
+            btn.disabled = false;
+            btn.textContent = '✅ Enviar Mi Voto';
+            showNotification('❌ ' + result.error, 'error');
+        }
+    } catch (error) {
         btn.disabled = false;
-        btn.textContent = textoOriginal;
-        showNotification('❌ ' + result.error, 'error');
+        btn.textContent = '✅ Enviar Mi Voto';
+        showNotification('❌ Error: ' + error.message, 'error');
     }
+    
+    console.log('=== FIN ENVÍO DE VOTO ===');
 }
 
 // ============================================
