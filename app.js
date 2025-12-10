@@ -142,7 +142,8 @@ async function handleEnviarInvitacion(correo) {
         return;
     }
 
-    const voteUrl = `${window.location.origin}/Encuestas_lis/vote.html?token=${tokenResult.token}`;
+    // ✅ URL ACTUALIZADA al nuevo repositorio
+    const voteUrl = `https://reynaldoian.github.io/Encuestas_seguras/vote.html?token=${tokenResult.token}`;
     
     try {
         await navigator.clipboard.writeText(voteUrl);
@@ -180,11 +181,14 @@ async function handleEnviarATodos() {
         // 2. Generar tokens y enlaces para cada uno
         const invitaciones = [];
         
+        // ✅ URL BASE ACTUALIZADA
+        const URL_BASE = 'https://reynaldoian.github.io/Encuestas_seguras/vote.html';
+        
         for (const participante of participantesPendientes) {
             const tokenResult = await generarTokenInvitacion(participante.email);
             
             if (tokenResult.success) {
-                const voteUrl = `${window.location.origin}/Encuestas_lis/vote.html?token=${tokenResult.token}`;
+                const voteUrl = `${URL_BASE}?token=${tokenResult.token}`;
                 invitaciones.push({
                     email: participante.email,
                     link: voteUrl
