@@ -295,6 +295,27 @@ async function eliminarPregunta(idPregunta) {
     return { success: false, error: error.message };
   }
 }
+// ============================================
+// UTILIDADES - VALIDACIÓN UUID
+// ============================================
+
+function validarUUID(uuid) {
+  if (!uuid || typeof uuid !== 'string') {
+    console.warn('⚠️ UUID no es string o está vacío:', uuid);
+    return false;
+  }
+  
+  // Patrón UUID v4: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  
+  const isValid = uuidPattern.test(uuid);
+  
+  if (!isValid) {
+    console.warn('⚠️ UUID con formato inválido:', uuid);
+  }
+  
+  return isValid;
+}
 
 // ============================================
 // VOTAR
@@ -375,6 +396,8 @@ async function registrarVoto(correo, respuestas) {
     return { success: false, error: error.message };
   }
 }
+
+
 
 // ============================================
 // RESULTADOS
