@@ -212,38 +212,30 @@ async function obtenerPreguntasConOpciones() {
 }
 
 // 🔥 SOLUCIÓN #3: Eliminación completa en cascada
+
 async function eliminarPregunta(idPregunta) {
-  try {
-    console.log('🗑️ Eliminando pregunta:', idPregunta);
-    
-    // 1. Obtener todas las opciones de esta pregunta
-    const { data: opciones, error: errorOpciones } = await supabase
-      .from('options')
-      .select('id')
-      .eq('position_id', idPregunta);
-    
-    if (errorOpciones) {
-      console.error('❌ Error al obtener opciones:', errorOpciones);
-      throw errorOpciones;
-    }
-    
-    console.log(`📝 Encontradas ${opciones?.length || 0} opciones`);
-    
-    // 2. Eliminar votos asociados a cada opción
-    if (opciones && opciones.length > 0) {
-      const idsOpciones = opciones.map(o => o.id);
-      
-      const { error: errorVotos } = await supabase
-        .from('votes')
-        .delete()
-        .in('option_id', idsOpciones);
-      
-      if (errorVotos) {
-        console.warn('⚠️ Error al eliminar votos:', errorVotos);
-      } else {
-        console.log('✅ Votos eliminados');
-      }
-    }
+  try {
+    console.log('🗑️ Eliminando pregunta con función SQL:', idPregunta);
+    
+    // Llamar a la función SQL que elimina en cascada
+    const { data, error } = await supabase
+      .rpc('eliminar_pregunta_completa', {
+        p_position_id: idPregunta
+      });
+    
+    if (error) {
+      console.error('❌ Error en función RPC:', error);
+      throw error;
+    }
+    
+    console.log('✅ Pregunta eliminada completamente');
+    return { success: true };
+    
+  } catch (error) {
+    console.error('❌ Error al eliminar pregunta:', error);
+    return { success: false, error: error.message };
+  }
+}
     
     // 3. Eliminar opciones
     const { error: errorDeleteOpciones } = await supabase
