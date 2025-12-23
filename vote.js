@@ -1,5 +1,5 @@
 // ============================================
-// VOTE.JS - Lógica de la Página de Votación
+// VOTE.JS 
 // ============================================
 
 let correoActual = null;
@@ -172,9 +172,10 @@ async function handleSubmitVote() {
 }
 
 // ============================================
-// INICIALIZACIÓN
+// INICIALIZACIÓN CON DEPURACIÓN
 // ============================================
 async function init() {
+    console.log('🔄 Iniciando verificación de votación...');
     const container = document.getElementById('votingContainer');
 
     // Obtener parámetros de URL
@@ -182,8 +183,11 @@ async function init() {
     const token = urlParams.get('token');
     const email = urlParams.get('email');
 
+    console.log('🔗 Parámetros URL:', { token, email });
+
     // Validar token o email
     if (!token && !email) {
+        console.error('❌ Sin token ni email en URL');
         container.innerHTML = renderError(
             'Acceso Inválido',
             'Debe acceder mediante el enlace enviado a su correo electrónico.',
@@ -196,8 +200,12 @@ async function init() {
 
     // Validar token si existe
     if (token) {
+        console.log('🔐 Validando token...');
         const tokenResult = await validarTokenInvitacion(token);
+        console.log('🔐 Resultado token:', tokenResult);
+        
         if (!tokenResult.success) {
+            console.error('❌ Token inválido:', tokenResult.error);
             container.innerHTML = renderError(
                 'Token Inválido o Expirado',
                 tokenResult.error,
@@ -210,12 +218,16 @@ async function init() {
         correoParticipante = email;
     }
 
+    console.log('📧 Correo participante:', correoParticipante);
     correoActual = correoParticipante;
 
     // Obtener participante
+    console.log('👤 Obteniendo participante...');
     const participanteResult = await obtenerParticipantePorCorreo(correoParticipante);
+    console.log('👤 Resultado participante:', participanteResult);
     
     if (!participanteResult.success) {
+        console.error('❌ Error obteniendo participante:', participanteResult.error);
         container.innerHTML = renderError(
             'Correo No Registrado',
             `El correo ${correoParticipante} no está registrado en el sistema.`,
@@ -225,9 +237,11 @@ async function init() {
     }
 
     const participante = participanteResult.data;
+    console.log('👤 Participante encontrado:', participante);
 
     // Verificar si ya votó
     if (participante.ha_votado) {
+        console.log('✅ Participante ya votó');
         container.innerHTML = renderSuccess(
             '¡Gracias por Participar!',
             'Su voto ya ha sido registrado exitosamente.'
@@ -236,9 +250,22 @@ async function init() {
     }
 
     // Obtener preguntas
+    console.log('❓ Obteniendo preguntas...');
     const preguntasResult = await obtenerPreguntasConOpciones();
+    console.log('❓ Resultado preguntas:', preguntasResult);
     
-    if (!preguntasResult.success || preguntasResult.data.length === 0) {
+    if (!preguntasResult.success) {
+        console.error('❌ Error obteniendo preguntas:', preguntasResult.error);
+        container.innerHTML = renderError(
+            'Error al Cargar Encuesta',
+            'No se pudieron cargar las preguntas de la encuesta.',
+            '⚠️'
+        );
+        return;
+    }
+    
+    if (preguntasResult.data.length === 0) {
+        console.error('❌ No hay preguntas configuradas');
         container.innerHTML = renderError(
             'Encuesta No Disponible',
             'No hay preguntas configuradas para esta encuesta.',
@@ -247,21 +274,50 @@ async function init() {
         return;
     }
 
+    console.log(`✅ ${preguntasResult.data.length} preguntas cargadas`);
+    
     // Renderizar formulario
     container.innerHTML = renderVotingForm(participante, preguntasResult.data);
+    console.log('✅ Formulario de votación renderizado');
 }
 
-// Ejecutar al cargar
+// ============================================
+// EJECUCIÓN AL CARGAR LA PÁGINA
+// ============================================
 document.addEventListener('DOMContentLoaded', async function() {
-    const conexion = await verificarConexion();
-    if (!conexion.success) {
+    console.log('📄 DOM cargado, verificando conexión...');
+    
+    try {
+        const conexion = await verificarConexion();
+        console.log('🔗 Resultado conexión:', conexion);
+        
+        if (!conexion.success) {
+            document.getElementById('votingContainer').innerHTML = renderError(
+                'Error de Conexión',
+                'No se pudo conectar con el servidor. Por favor, intente más tarde.',
+                '⚠️'
+            );
+            return;
+        }
+        
+        console.log('✅ Conexión exitosa, iniciando votación...');
+        await init();
+    } catch (error) {
+        console.error('❌ Error en inicialización:', error);
         document.getElementById('votingContainer').innerHTML = renderError(
-            'Error de Conexión',
-            'No se pudo conectar con el servidor. Por favor, intente más tarde.',
-            '⚠️'
+            'Error Inesperado',
+            'Ocurrió un error al cargar la página. Por favor, recargue.',
+            '❌'
         );
-        return;
     }
-
-    await init();
 });
+
+// ============================================
+// FUNCIONES DE DEPURACIÓN (agregar a la consola)
+// ============================================
+// Para depurar, abre la consola y ejecuta:
+console.log('🔧 Comandos de depuración disponibles:');
+console.log('   - obtenerParticipantePorCorreo("tu@email.com")');
+console.log('   - obtenerPreguntasConOpciones()');
+console.log('   - verificarConexion()');
+console.log('   - validarTokenInvitacion("token")');
