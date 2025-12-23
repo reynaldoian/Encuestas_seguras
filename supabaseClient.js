@@ -1,4 +1,4 @@
-// ============================================
+
 // CONFIGURACIÓN DE SUPABASE CLIENT - VERSIÓN CORREGIDA CON EMAILJS
 // ============================================
 
