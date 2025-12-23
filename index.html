@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Encuestas - Administración</title>
-     <link rel="icon" href="data:,">
+    <link rel="icon" href="data:,">
+    
     <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
@@ -37,7 +38,9 @@
 
         <!-- Contenido -->
         <div id="tabContent">
+            <!-- ============================================ -->
             <!-- PARTICIPANTES -->
+            <!-- ============================================ -->
             <div id="participants" class="tab-content active">
                 <div class="card">
                     <h2 class="card-title">Registrar Participante</h2>
@@ -89,9 +92,44 @@
                 </div>
             </div>
 
-            <!-- PREGUNTAS -->
+            <!-- ============================================ -->
+            <!-- PREGUNTAS - CON FORMULARIO AGREGADO -->
+            <!-- ============================================ -->
             <div id="positions" class="tab-content">
-                <h2 class="card-title">Preguntas Creadas</h2>
+                
+                <!-- 🔥 FORMULARIO PARA CREAR PREGUNTAS (NUEVO) -->
+                <div class="card">
+                    <h2 class="card-title">➕ Crear Nueva Pregunta</h2>
+                    
+                    <div class="input-full">
+                        <input 
+                            type="text" 
+                            id="positionTitulo" 
+                            placeholder="Escribe la pregunta aquí... (ej: ¿Cuál es tu lenguaje favorito?)" 
+                            style="font-size: 16px;"
+                        >
+                    </div>
+                    
+                    <div class="input-full">
+                        <textarea 
+                            id="positionCandidatos" 
+                            placeholder="Escribe las opciones separadas por comas...&#10;&#10;Ejemplo:&#10;JavaScript, Python, Java, C++, Ruby"
+                            rows="4"
+                            style="font-size: 15px; resize: vertical; min-height: 100px;"
+                        ></textarea>
+                    </div>
+                    
+                    <p class="help-text">
+                        💡 <strong>Tip:</strong> Separa cada opción con una coma (,). 
+                        Ejemplo: <em>Opción 1, Opción 2, Opción 3</em>
+                    </p>
+                    
+                    <button class="btn btn-primary" onclick="handleCrearPregunta()" style="width: 100%;">
+                        ➕ Crear Pregunta
+                    </button>
+                </div>
+
+                <!-- LISTA DE PREGUNTAS CREADAS -->
                 <div class="card">
                     <div class="card-header">
                         <h3>Preguntas Creadas (<span id="positionCount">0</span>)</h3>
@@ -107,7 +145,9 @@
                 </div>
             </div>
 
+            <!-- ============================================ -->
             <!-- RESULTADOS -->
+            <!-- ============================================ -->
             <div id="results" class="tab-content">
                 <div class="stats-grid">
                     <div class="stat-card">
