@@ -46,7 +46,7 @@ function initTabs() {
 }
 
 // ============================================
-// FUNCIONES DE SUPABASE (las mismas de supabaseClient.js pero usando db)
+// FUNCIONES DE SUPABASE
 // ============================================
 
 // Registrar participante
@@ -159,22 +159,54 @@ async function obtenerParticipantePorCorreo(correo) {
     }
 }
 
-// Crear pregunta
+// 🔥 FUNCIÓN CORREGIDA - Crear pregunta CON opciones
 async function crearPregunta(pregunta, opciones) {
     try {
-        console.log('🔍 Creando pregunta:', pregunta);
+        console.log('📝 Creando pregunta:', pregunta);
+        console.log('📋 Opciones recibidas:', opciones);
         
+        // 1️⃣ PASO 1: Insertar la pregunta
         const { data: preguntaData, error: preguntaError } = await db
             .from('positions')
             .insert([{ titulo: pregunta }])
             .select();
 
-        if (preguntaError) throw preguntaError;
+        if (preguntaError) {
+            console.error('❌ Error al crear pregunta:', preguntaError);
+            throw preguntaError;
+        }
         
-        console.log('✅ Pregunta creada con', opciones.length, 'opciones');
+        const preguntaId = preguntaData[0].id;
+        console.log('✅ Pregunta creada con ID:', preguntaId);
+        
+        // 2️⃣ PASO 2: Preparar las opciones con position_id
+        const opcionesData = opciones.map((opcion, index) => ({
+            position_id: preguntaId,
+            texto: opcion,
+            orden: index + 1
+        }));
+        
+        console.log('📤 Insertando opciones:', opcionesData);
+        
+        // 3️⃣ PASO 3: Insertar las opciones
+        const { error: opcionesError } = await db
+            .from('options')
+            .insert(opcionesData);
+        
+        if (opcionesError) {
+            console.error('❌ Error al crear opciones:', opcionesError);
+            
+            // 🔥 IMPORTANTE: Si falla, eliminar la pregunta creada
+            await db.from('positions').delete().eq('id', preguntaId);
+            
+            throw opcionesError;
+        }
+        
+        console.log('✅ Pregunta creada exitosamente con', opciones.length, 'opciones');
         return { success: true, data: preguntaData[0] };
+        
     } catch (error) {
-        console.error('❌ Error:', error);
+        console.error('❌ Error completo:', error);
         return { success: false, error: error.message };
     }
 }
@@ -580,7 +612,7 @@ async function verificarConexion() {
 }
 
 // ============================================
-// PARTICIPANTES (funciones originales)
+// PARTICIPANTES
 // ============================================
 async function handleRegistrarParticipante() {
     const email = document.getElementById('participantEmail').value.trim();
@@ -769,6 +801,9 @@ async function handleCrearPregunta() {
         showNotification('Agregue al menos una opción', 'error');
         return;
     }
+
+    console.log('📝 Creando pregunta:', titulo);
+    console.log('📋 Opciones:', opcionesArray);
 
     const result = await crearPregunta(titulo, opcionesArray);
 
