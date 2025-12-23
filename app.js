@@ -46,7 +46,541 @@ function initTabs() {
 }
 
 // ============================================
-// PARTICIPANTES
+// FUNCIONES DE SUPABASE (las mismas de supabaseClient.js pero usando db)
+// ============================================
+
+// Registrar participante
+async function registrarParticipante(datos) {
+    try {
+        console.log('🔍 Registrando participante:', datos.correo);
+        
+        const { data, error } = await db
+            .from('participants')
+            .insert([{
+                email: datos.correo,
+                nombre: datos.nombre,
+                apellido: datos.apellido,
+                campo1: datos.campo1 || null,
+                campo2: datos.campo2 || null,
+                campo3: datos.campo3 || null
+            }])
+            .select();
+
+        if (error) {
+            console.error('❌ Error en insert:', error);
+            throw error;
+        }
+        
+        console.log('✅ Participante registrado:', data[0]);
+        return { success: true, data: data[0] };
+    } catch (error) {
+        console.error('❌ Error al registrar:', error);
+        
+        if (error.code === '23505') {
+            return { success: false, error: 'Este correo ya está registrado' };
+        }
+        
+        return { success: false, error: error.message };
+    }
+}
+
+// Obtener participantes
+async function obtenerParticipantes() {
+    try {
+        console.log('📋 Obteniendo participantes...');
+        
+        const { data, error } = await db
+            .from('participants')
+            .select('*')
+            .order('registrado', { ascending: false });
+
+        if (error) throw error;
+        
+        console.log('✅ Participantes obtenidos:', data.length);
+        return { success: true, data };
+    } catch (error) {
+        console.error('❌ Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Eliminar participante
+async function eliminarParticipante(correo) {
+    try {
+        console.log('🗑️ Eliminando participante:', correo);
+        
+        const { error: errorVotos } = await db
+            .from('votes')
+            .delete()
+            .eq('participant_email', correo);
+        
+        if (errorVotos) {
+            console.warn('⚠️ Error al eliminar votos:', errorVotos);
+        }
+        
+        const { error: errorTokens } = await db
+            .from('invitaciones')
+            .delete()
+            .eq('correo', correo);
+        
+        if (errorTokens) {
+            console.warn('⚠️ Error al eliminar tokens:', errorTokens);
+        }
+        
+        const { error } = await db
+            .from('participants')
+            .delete()
+            .eq('email', correo);
+
+        if (error) throw error;
+        
+        console.log('✅ Participante eliminado');
+        return { success: true };
+    } catch (error) {
+        console.error('❌ Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Obtener participante por correo
+async function obtenerParticipantePorCorreo(correo) {
+    try {
+        const { data, error } = await db
+            .from('participants')
+            .select('*')
+            .eq('email', correo)
+            .single();
+
+        if (error) throw error;
+        return { success: true, data };
+    } catch (error) {
+        console.error('❌ Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Crear pregunta
+async function crearPregunta(pregunta, opciones) {
+    try {
+        console.log('🔍 Creando pregunta:', pregunta);
+        
+        const { data: preguntaData, error: preguntaError } = await db
+            .from('positions')
+            .insert([{ titulo: pregunta }])
+            .select();
+
+        if (preguntaError) throw preguntaError;
+        
+        console.log('✅ Pregunta creada con', opciones.length, 'opciones');
+        return { success: true, data: preguntaData[0] };
+    } catch (error) {
+        console.error('❌ Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Obtener preguntas con opciones
+async function obtenerPreguntasConOpciones() {
+    try {
+        console.log('📋 Obteniendo preguntas...');
+        
+        const { data: preguntas, error: preguntasError } = await db
+            .from('positions')
+            .select(`id, titulo, options (id, texto, orden)`)
+            .order('id', { ascending: true });
+
+        if (preguntasError) throw preguntasError;
+
+        const preguntasFormateadas = preguntas.map(p => ({
+            id: p.id.toString(),
+            pregunta: p.titulo,
+            opciones: (p.options || [])
+                .sort((a, b) => a.orden - b.orden)
+                .map(o => ({
+                    id: o.id.toString(),
+                    opcion: o.texto,
+                    orden: o.orden
+                }))
+        }));
+
+        console.log('✅ Preguntas obtenidas:', preguntasFormateadas.length);
+        return { success: true, data: preguntasFormateadas };
+    } catch (error) {
+        console.error('❌ Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Eliminar pregunta
+async function eliminarPregunta(idPregunta) {
+    try {
+        console.log('🗑️ Eliminando pregunta:', idPregunta);
+        
+        const { data: opciones, error: errorOpciones } = await db
+            .from('options')
+            .select('id')
+            .eq('position_id', idPregunta);
+
+        if (errorOpciones) throw errorOpciones;
+
+        if (opciones && opciones.length > 0) {
+            const opcionesIds = opciones.map(o => o.id);
+            
+            const { error: errorVotos } = await db
+                .from('votes')
+                .delete()
+                .in('option_id', opcionesIds);
+            
+            if (errorVotos) throw errorVotos;
+        }
+
+        const { error: errorDeleteOpciones } = await db
+            .from('options')
+            .delete()
+            .eq('position_id', idPregunta);
+        
+        if (errorDeleteOpciones) throw errorDeleteOpciones;
+        
+        const { error: errorPregunta } = await db
+            .from('positions')
+            .delete()
+            .eq('id', idPregunta);
+
+        if (errorPregunta) throw errorPregunta;
+        
+        console.log('✅ Pregunta eliminada completamente');
+        return { success: true };
+    } catch (error) {
+        console.error('❌ Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Registrar voto
+async function registrarVoto(correo, respuestas) {
+    try {
+        console.log('🗳️ Registrando voto para:', correo);
+        
+        // Convertir respuestas al formato correcto
+        const respuestasData = respuestas.map(r => ({
+            participant_email: correo,
+            position_id: r.idPregunta,
+            option_id: r.idOpcion,
+            fecha: new Date().toISOString()
+        }));
+
+        console.log('📤 Datos a insertar:', respuestasData);
+
+        // Insertar votos
+        for (let i = 0; i < respuestasData.length; i++) {
+            const voto = respuestasData[i];
+            console.log(`📤 Insertando voto ${i + 1}:`, voto);
+            
+            const { error: errorVoto } = await db
+                .from('votes')
+                .insert([voto]);
+
+            if (errorVoto) {
+                console.error(`❌ Error al insertar voto ${i + 1}:`, errorVoto);
+                throw errorVoto;
+            }
+        }
+        
+        // Actualizar estado del participante
+        const { error: errorUpdate } = await db
+            .from('participants')
+            .update({ ha_votado: true })
+            .eq('email', correo);
+
+        if (errorUpdate) {
+            console.warn('⚠️ Error al actualizar ha_votado:', errorUpdate);
+        }
+        
+        console.log('✅ Voto registrado exitosamente');
+        return { success: true };
+        
+    } catch (error) {
+        console.error('❌ Error al registrar voto:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Generar token de invitación
+async function generarTokenInvitacion(correo) {
+    try {
+        const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
+        const fechaExpiracion = new Date();
+        fechaExpiracion.setDate(fechaExpiracion.getDate() + 7);
+
+        const { data, error } = await db
+            .from('invitaciones')
+            .insert([{
+                correo: correo,
+                token: token,
+                fecha_expiracion: fechaExpiracion.toISOString()
+            }])
+            .select();
+
+        if (error) throw error;
+        return { success: true, token: token };
+    } catch (error) {
+        console.error('❌ Error generando token:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Validar token de invitación
+async function validarTokenInvitacion(token) {
+    try {
+        const { data, error } = await db
+            .from('invitaciones')
+            .select('correo, fecha_expiracion')
+            .eq('token', token)
+            .single();
+
+        if (error) throw error;
+
+        if (new Date(data.fecha_expiracion) < new Date()) {
+            return { success: false, error: 'El token ha expirado' };
+        }
+
+        return { success: true, correo: data.correo };
+    } catch (error) {
+        console.error('❌ Error validando token:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Obtener estadísticas generales
+async function obtenerEstadisticasGenerales() {
+    try {
+        console.log('📊 Obteniendo estadísticas...');
+        
+        const { count: totalParticipantes, error: errorTotal } = await db
+            .from('participants')
+            .select('*', { count: 'exact', head: true });
+
+        if (errorTotal) throw errorTotal;
+
+        const { count: participantesVotaron, error: errorVotaron } = await db
+            .from('participants')
+            .select('*', { count: 'exact', head: true })
+            .eq('ha_votado', true);
+
+        if (errorVotaron) throw errorVotaron;
+
+        const tasaParticipacion = totalParticipantes > 0 
+            ? ((participantesVotaron / totalParticipantes) * 100).toFixed(1) 
+            : 0;
+
+        const stats = {
+            total_participantes: totalParticipantes || 0,
+            participantes_votaron: participantesVotaron || 0,
+            tasa_participacion: parseFloat(tasaParticipacion)
+        };
+        
+        console.log('✅ Estadísticas:', stats);
+        return { success: true, data: stats };
+    } catch (error) {
+        console.error('❌ Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Obtener resultados de pregunta
+async function obtenerResultadosPregunta(idPregunta) {
+    try {
+        console.log('📊 Obteniendo resultados para pregunta ID:', idPregunta);
+        
+        const { data, error } = await db
+            .from('votes')
+            .select(`
+                option_id,
+                options!inner (
+                    id,
+                    texto,
+                    position_id
+                )
+            `)
+            .eq('options.position_id', idPregunta);
+
+        if (error) throw error;
+
+        const votosPorOpcion = {};
+        data.forEach(voto => {
+            const opcionId = voto.option_id;
+            votosPorOpcion[opcionId] = (votosPorOpcion[opcionId] || 0) + 1;
+        });
+
+        const { data: opciones, error: errorOpciones } = await db
+            .from('options')
+            .select('id, texto')
+            .eq('position_id', idPregunta)
+            .order('orden', { ascending: true });
+
+        if (errorOpciones) throw errorOpciones;
+
+        const totalVotos = data.length;
+        const resultados = opciones.map(opcion => ({
+            opcion: opcion.texto,
+            votos: votosPorOpcion[opcion.id] || 0,
+            porcentaje: totalVotos > 0 
+                ? ((votosPorOpcion[opcion.id] || 0) / totalVotos * 100).toFixed(1)
+                : 0
+        }));
+
+        console.log('✅ Resultados obtenidos:', resultados);
+        return { success: true, data: resultados };
+    } catch (error) {
+        console.error('❌ Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Obtener resultados completos
+async function obtenerResultadosCompletos() {
+    try {
+        console.log('📊 Obteniendo resultados completos...');
+        
+        const preguntasResult = await obtenerPreguntasConOpciones();
+        if (!preguntasResult.success) throw new Error(preguntasResult.error);
+
+        const resultados = [];
+        for (const pregunta of preguntasResult.data) {
+            const resultadoPregunta = await obtenerResultadosPregunta(pregunta.id);
+            if (resultadoPregunta.success) {
+                resultados.push({
+                    pregunta: pregunta.pregunta,
+                    opciones: resultadoPregunta.data
+                });
+            }
+        }
+
+        console.log('✅ Resultados obtenidos:', resultados.length, 'preguntas');
+        return { success: true, data: resultados };
+    } catch (error) {
+        console.error('❌ Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Enviar invitaciones con EmailJS
+async function enviarInvitaciones(correos = []) {
+    try {
+        console.log('📧 INICIANDO ENVÍO DE EMAILS CON EMAILJS');
+        console.log('📧 Correos recibidos:', correos.length);
+        
+        // Validar que hay correos
+        if (!correos || correos.length === 0) {
+            console.error('❌ Array de correos vacío o undefined');
+            return { success: false, error: 'No hay correos para enviar' };
+        }
+
+        // Enviar cada email con EmailJS
+        const resultados = [];
+        
+        for (const invitacion of correos) {
+            console.log('📤 Enviando a:', invitacion.email);
+            
+            const resultado = await enviarEmailEmailJS(invitacion.email, invitacion.link);
+            
+            resultados.push({
+                email: invitacion.email,
+                link: invitacion.link,
+                enviado: resultado.success,
+                id: resultado.id || null,
+                mensaje: resultado.mensaje || resultado.error
+            });
+        }
+
+        const exitosos = resultados.filter(r => r.enviado).length;
+        
+        console.log(`✅ EmailJS: ${exitosos}/${correos.length} emails enviados`);
+        
+        return { 
+            success: true, 
+            data: {
+                count: exitosos,
+                resultado: {
+                    resultados: resultados,
+                    mensaje: `${exitosos} emails enviados con EmailJS`
+                }
+            }
+        };
+
+    } catch (error) {
+        console.error('❌ ERROR con EmailJS:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Función para enviar emails con EmailJS
+async function enviarEmailEmailJS(email, link) {
+    try {
+        console.log('📧 Enviando email con EmailJS...');
+        
+        // Configuración de EmailJS 
+        const emailjsConfig = {
+            serviceID: 'service_c8mykiy',          
+            templateID: 'template_dd5qzlq',         
+            publicKey: 'DKLmstEK3OXZar938'      
+        };
+
+        // Parámetros para el template
+        const templateParams = {
+            to_email: email,
+            link: link,
+            from_name: 'Incorporación',
+            year: new Date().getFullYear(),
+            reply_to: 'reynaldoian0596@gmail.com'
+        };
+
+        // Inicializar EmailJS si no está inicializado
+        if (typeof emailjs !== 'undefined' && !window.emailjsInitialized) {
+            emailjs.init(emailjsConfig.publicKey);
+            window.emailjsInitialized = true;
+        }
+
+        // Enviar con EmailJS
+        const response = await emailjs.send(
+            emailjsConfig.serviceID,
+            emailjsConfig.templateID,
+            templateParams
+        );
+
+        console.log('✅ Email enviado con EmailJS:', response);
+        return { 
+            success: true, 
+            id: response.text,
+            mensaje: 'Email enviado correctamente con EmailJS'
+        };
+
+    } catch (error) {
+        console.error('❌ Error con EmailJS:', error);
+        return { 
+            success: false, 
+            error: error.text || error.message 
+        };
+    }
+}
+
+// Verificar conexión
+async function verificarConexion() {
+    try {
+        const { error } = await db
+            .from('participants')
+            .select('count')
+            .limit(1);
+
+        return { success: !error };
+    } catch (error) {
+        console.error('❌ Error de conexión:', error);
+        return { success: false };
+    }
+}
+
+// ============================================
+// PARTICIPANTES (funciones originales)
 // ============================================
 async function handleRegistrarParticipante() {
     const email = document.getElementById('participantEmail').value.trim();
@@ -142,7 +676,6 @@ async function handleEnviarInvitacion(correo) {
         return;
     }
 
-    // ✅ URL ACTUALIZADA al nuevo repositorio
     const voteUrl = `https://reynaldoian.github.io/Encuestas_seguras/vote.html?token=${tokenResult.token}`;
     
     try {
@@ -161,7 +694,6 @@ async function handleEnviarATodos() {
     showNotification('📧 Generando enlaces...', 'warning');
     
     try {
-        // 1. Obtener participantes que NO han votado
         const participantesResult = await obtenerParticipantes();
         
         if (!participantesResult.success) {
@@ -178,10 +710,8 @@ async function handleEnviarATodos() {
         
         console.log('📋 Participantes pendientes:', participantesPendientes.length);
         
-        // 2. Generar tokens y enlaces para cada uno
         const invitaciones = [];
         
-        // ✅ URL BASE ACTUALIZADA
         const URL_BASE = 'https://reynaldoian.github.io/Encuestas_seguras/vote.html';
         
         for (const participante of participantesPendientes) {
@@ -203,7 +733,6 @@ async function handleEnviarATodos() {
             return;
         }
         
-        // 3. Enviar emails con EmailJS
         const result = await enviarInvitaciones(invitaciones);
         
         if (result.success) {
@@ -271,7 +800,6 @@ async function cargarPreguntas() {
         return;
     }
 
-    // ✅ CORREGIDO: IDs UUID entre comillas simples
     container.innerHTML = preguntas.map(p => `
         <div class="position-item">
             <div class="position-header">
@@ -288,7 +816,7 @@ async function cargarPreguntas() {
 async function handleEliminarPregunta(id) {
     if (!confirm('¿Está seguro de eliminar esta pregunta?')) return;
 
-    console.log('🗑️ Eliminando pregunta con ID:', id); // DEBUG
+    console.log('🗑️ Eliminando pregunta con ID:', id);
     
     const result = await eliminarPregunta(id);
     if (result.success) {
@@ -453,3 +981,38 @@ document.addEventListener('DOMContentLoaded', async function() {
         showNotification('❌ Error de conexión con Supabase', 'error');
     }
 });
+
+// Función de validación UUID
+function validarUUID(uuid) {
+    if (!uuid || typeof uuid !== 'string') {
+        console.warn('⚠️ UUID no es string o está vacío:', uuid);
+        return false;
+    }
+    
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    
+    const isValid = uuidPattern.test(uuid);
+    
+    if (!isValid) {
+        console.warn('⚠️ UUID con formato inválido:', uuid);
+    }
+    
+    return isValid;
+}
+
+// Función para verificar si puede votar
+async function puedeVotar(correo) {
+    try {
+        const { data, error } = await db
+            .from('participants')
+            .select('ha_votado')
+            .eq('email', correo)
+            .single();
+
+        if (error) throw error;
+        return { success: true, puedeVotar: !data.ha_votado };
+    } catch (error) {
+        console.error('❌ Error:', error);
+        return { success: false, error: error.message };
+    }
+}
